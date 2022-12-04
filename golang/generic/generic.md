@@ -120,7 +120,7 @@ func main(){
      ```
     - 这里我们从Go语言规范上摘抄了泛型的语法定义,从中可以直观的看出泛型定义就是一对中括号加上泛型形参列表及一个可选的用于换行的逗号.
     - 我们写一些简单的类型定义
-    ```go
+    ```
         // generic function
         func Add[T int|int32](x,y) T{
             return x+y
@@ -159,7 +159,7 @@ func main(){
     ```
     TypeParamList   = TypeParamDecl { "," TypeParamDecl } .
     ```
-    ```go
+    ```
     func Cast[T,V any](items []T,conv func(T)V) []V{
         targets:=[]V{}
         
@@ -203,7 +203,7 @@ func main(){
    ```
    - 类型约束是定义相应类型形参的支持类型范围.如 `T int|int32` 就约束`T`的类型只能是`int`或`int32`,一个完整的类型约束定义应该是`interface{E}`,`E`是类型的名称.比如`interface{int|int32|string}`,不过`interface{}`一般情况下都可以省略.
    - 下面我们看一些例子
-   ```go
+   ```
       type interface Stringer {
           string String()
       }
@@ -235,7 +235,7 @@ func main(){
      type PtrSlice[T interface{*int|*float32}] []T 
    ```
    - ~符号用于表示只要是兼容的底层基础类型,只能用于基础类型
-   ```go
+   ```
       type Int int
       type Float32 float32
       type Slice[T ~int|float32] []T
@@ -280,7 +280,7 @@ func main(){
 > # 内置类型
 - comparable & any
 	- 在1.18中go语言引入了两个内置接口类型(严格来说只有`comparable`,`any`是`interface{}`的别名),`any`表示可以接收任意类型.`comparable`表示可比较的,即该类型必须支持`==`与`!=`操作,而且`comparable`只能用于约束泛型形参参数,不能用于其他地方.
-	```go
+	```
 	func SliceToMap[S any,K comparable,V any](s []T,k func(S)K,v func(S)V)map[K]V{
 		m:=map[K]T{}
 		for _,item:=range s{
@@ -294,7 +294,7 @@ func main(){
 
 - constraints包 (golang.org/x/exp/constraints)
    - constraints包提供了一些定义好的接口(挺少的),在开发过程中我们可以直接进行使用.
-   ```go
+   ```
 	type Complex interface {
 		~complex64 | ~complex128
 	}
@@ -320,279 +320,281 @@ func main(){
 	}
    ```
 
-> 练习
-	- 我们来写用泛型实现一个`List`(类似于`C#`中的`List<T>`)来练习一下泛型得使用及一些小技巧.
-	```go
-	// type definition
+> ## 练习
+ 
+- 我们来写用泛型实现一个`List`(类似于`C#`中的`List<T>`)来练习一下泛型的使用
+```
+// type definition
+
+type List[T any] interface {
+	Get(index int)T
+	Set(value T,index int)
+	Empty() bool
+	Count() int
+	Slice() []T
+	Contains(item T) bool
+	Find(filter func(item T) bool) List[T]
+	First(filter func(item T) bool) (T, bool)
+	FirstOrDefault(filter func(item T) bool) T
+	Add(item T)
+	Insert(item T, index int)
+	IndexOf(item T) int
+	Remove(item T) bool
+	RemoveAll(filter func(item T) bool) bool
+}
+```
+- 我们先定义一下这个`List`的`interface`,下面我们来定义一下它的实现
+```
+type List[T any] struct{
+	items []T
+}
+```
+- 这个`struct`的结构非常简单,它内部引用一个`slice`来存储具体的数据
+- NewList 函数,很简单,没什么好说的
+```
+func NewList[T any]() *List[T] {
+	return &List[T]{
+		items: make([]T, 0),
+	}
+}
+```
+-  Get|Set方法
+```
+func (list *List[T]) Get(index int) T {
+	if index < 0 || index >= list.Count() {
+		panic("index out of slice range")
+	}
+
+	return list.items[index]
+}
+
+func (list *List[T]) Set(value T, index int) {
+	if index < 0 || index >= list.Count() {
+		panic("index out of slice range")
+	}
+
+	list.items[index] = value
+}
+
+```
+-  Empty|Count|Slice方法
+```
+func (list *List[T]) Empty() bool {
+	return len(list.items) == 0
+}
+
+func (list *List[T]) Count() int {
+	return len(list.items)
+}
+
+func (list *List[T]) Slice() []T {
+	return list.items[:]
+}
+```
+- IndexOf | Contains 方法
+```
+func (list *List[T]) IndexOf(item T) int {
+	for index, it := range list.items {
+		if it==item {  // error invalid operation: it == item (type parameter T is not comparable with ==)
+			return index
+		}
+	}
+
+	return -1
+}
+
+func (list *List[T]) Contains(item T) bool {
+	return list.IndexOf(item) >= 0
+}
+```
+- 很快写出来了，可惜编译失败，因为我们这个泛型形参不是可比较的，怎么办呢.有很多种办法
+	- 修改泛型形参约束类型为`comparable`,但是这个就直接限制了我们`List`的可用范围.
+	- 修改`IndexOf`方法参数,像`First`方法那样传递一个`func`,因为调用的时候泛型类型已经实例化好了,调用方可以进行比较,但每一次调用都需要额外传递参数
+	- `NewList`增加参数传递一个`func`或`interface`,存到`List`内部,我比较倾向于这种
+- 我们修改一下`List`的定义及重新实现一下`NewList`方法
+```
+type List[T any] struct {
+	items []T
+	comp  func(x, y T) int
+}
+
+func NewList[T any](comp func(x, y T) int) *List[T] {
+	return &List[T]{
+		comp:  comp,
+		items: make([]T, 0),
+	}
+}
+
+func (list *List[T]) IndexOf(item T) int {
+	for index, it := range list.items {
+		if list.comp(it,item)==0 {
+			return index
+		}
+	}
+
+	return -1
+}
+```
+- Find|First|FirstOrDefault 方法
+```
+func (list *List[T]) Find(filter func(T) bool) *List[T] {
+	n := NewList[T](list.comp)
+	for _, item := range list.items {
+		if filter(item) {
+			n.Add(item)
+		}
+	}
+
+	return n
+}
+
+func (list *List[T]) First(filter func(T) bool) (T, bool) {
+	for _, item := range list.items {
+		if filter(item) {
+			return item, true
+		}
+	}
+
+	var v T
+	return v, false
+}
+
+func (list *List[T]) FirstOrDefault(filter func(T) bool) T {
+	v, _ := list.First(filter)
+	return v
+}
+
+```
+- Add|Insert|Remove|RemoveAll方法
+```
+func (list *List[T]) Add(item T) {
+	list.items = append(list.items, item)
+}
+
+func (list *List[T]) Insert(item T, index int) {
+	if index == 0 {
+		list.items = append([]T{item}, list.items...)
+		return
+	}
+
+	if index == list.Count()-1 {
+		list.Add(item)
+		return
+	}
+
+	if index < 0 || index >= list.Count() {
+		panic("index out of slice range") // error
+	}
+
+	list.items = append(list.items[0:index], append([]T{item}, list.items[index:]...)...)
+}
 	
-	type List[T any] interface {
-		Get(index int)T
-		Set(value T,index int)
-		Empty() bool
-		Count() int
-		Slice() []T
-		Contains(item T) bool
-		Find(filter func(item T) bool) List[T]
-		First(filter func(item T) bool) (T, bool)
-		FirstOrDefault(filter func(item T) bool) T
-		Add(item T)
-		Insert(item T, index int)
-		IndexOf(item T) int
-		Remove(item T) bool
-		RemoveAll(filter func(item T) bool) bool
+func (list *List[T]) Remove(item T) bool {
+	index := list.IndexOf(item)
+	if index < 0 {
+		return false
 	}
-	```
-	- 我们先定义一下这个`List`的`interface`,下面我们来定义一下它的实现
-	```go
-	type List[T any] struct{
+
+	if index == list.Count()-1 {
+		list.items = list.items[0:index]
+	} else {
+		list.items = append(list.items[0:index], list.items[index+1:]...)
+	}
+
+	return true
+}
+
+func (list *List[T]) RemoveAll(filter func(item T) bool) bool {
+	var (
+		ok    bool
 		items []T
-	}
-	```
-	- 这个`struct`的结构非常简单,它内部引用一个`slice`来存储具体的数据
-	- NewList 函数,很简单,没什么好说的
-	```go
-	func NewList[T any]() *List[T] {
-		return &List[T]{
-			items: make([]T, 0),
-		}
-	}
-	```
-	-  Get|Set方法
-	```go
-	func (list *List[T]) Get(index int) T {
-		if index < 0 || index >= list.Count() {
-			panic("index out of slice range")
-		}
+	)
 
-		return list.items[index]
-	}
-
-	func (list *List[T]) Set(value T, index int) {
-		if index < 0 || index >= list.Count() {
-			panic("index out of slice range")
-		}
-
-		list.items[index] = value
-	}
-
-	```
-	-  Empty|Count|Slice方法
-	```go
-	func (list *List[T]) Empty() bool {
-		return len(list.items) == 0
-	}
-
-	func (list *List[T]) Count() int {
-		return len(list.items)
-	}
-
-	func (list *List[T]) Slice() []T {
-		return list.items[:]
-	}
-	```
-	- IndexOf | Contains 方法
-	```go
-	func (list *List[T]) IndexOf(item T) int {
-		for index, it := range list.items {
-			if it==item {  // error invalid operation: it == item (type parameter T is not comparable with ==)
-				return index
+	for index, item := range list.items {
+		if !filter(item) {
+			if ok {
+				items = append(items, item)
 			}
-		}
-
-		return -1
-	}
-
-	func (list *List[T]) Contains(item T) bool {
-		return list.IndexOf(item) >= 0
-	}
-	```
-  	- 很快写出来了，可惜编译失败，因为我们这个泛型形参不是可比较的，怎么办呢.有很多种办法
-  		- 修改泛型形参约束类型为`comparable`,但是这个就直接限制了我们`List`的可用范围.
-  		- 修改`IndexOf`方法参数,像`First`方法那样传递一个`func`,因为调用的时候泛型类型已经实例化好了,调用方可以进行比较,但每一次调用都需要额外传递参数
-  		- `NewList`增加参数传递一个`func`或`interface`,存到`List`内部,我比较倾向于这种
-  	- 我们修改一下`List`的定义及重新实现一下`NewList`方法
-  	```go
-  	type List[T any] struct {
-		items []T
-		comp  func(x, y T) int
-	}
-
-	func NewList[T any](comp func(x, y T) int) *List[T] {
-		return &List[T]{
-			comp:  comp,
-			items: make([]T, 0),
-		}
-	}
-
-  	func (list *List[T]) IndexOf(item T) int {
-  		for index, it := range list.items {
-  			if list.comp(it,item)==0 {
-  				return index
-  			}
-  		}
-
-  		return -1
-  	}
-  	```
-	- Find|First|FirstOrDefault 方法
-	```go
-	func (list *List[T]) Find(filter func(T) bool) *List[T] {
-		n := NewList[T](list.comp)
-		for _, item := range list.items {
-			if filter(item) {
-				n.Add(item)
-			}
-		}
-
-		return n
-	}
-
-	func (list *List[T]) First(filter func(T) bool) (T, bool) {
-		for _, item := range list.items {
-			if filter(item) {
-				return item, true
-			}
-		}
-
-		var v T
-		return v, false
-	}
-
-	func (list *List[T]) FirstOrDefault(filter func(T) bool) T {
-		v, _ := list.First(filter)
-		return v
-	}
-
-	```
-	- Add|Insert|Remove|RemoveAll方法
-	```go
-	func (list *List[T]) Add(item T) {
-		list.items = append(list.items, item)
-	}
-
-	func (list *List[T]) Insert(item T, index int) {
-		if index == 0 {
-			list.items = append([]T{item}, list.items...)
-			return
-		}
-
-		if index == list.Count()-1 {
-			list.Add(item)
-			return
-		}
-
-		if index < 0 || index >= list.Count() {
-			panic("index out of slice range") // error
-		}
-
-		list.items = append(list.items[0:index], append([]T{item}, list.items[index:]...)...)
-	}
-		
-	func (list *List[T]) Remove(item T) bool {
-		index := list.IndexOf(item)
-		if index < 0 {
-			return false
-		}
-
-		if index == list.Count()-1 {
-			list.items = list.items[0:index]
 		} else {
-			list.items = append(list.items[0:index], list.items[index+1:]...)
+			ok = true
+			items = list.items[0:index]
 		}
-
-		return true
 	}
 
-	func (list *List[T]) RemoveAll(filter func(item T) bool) bool {
-		var (
-			ok    bool
-			items []T
-		)
-
-		for index, item := range list.items {
-			if !filter(item) {
-				if ok {
-					items = append(items, item)
-				}
-			} else {
-				ok = true
-				items = list.items[0:index]
-			}
-		}
-
-		if ok {
-			list.items = items
-		}
-
-		return ok
+	if ok {
+		list.items = items
 	}
 
-	```
-	- 测试
-	```go
-	type User struct{
-		ID int
-		Name string
-	}
+	return ok
+}
 
-	func Compare[T constraints.Integer](x, y T) T {
-		return x - y
-	}
+```
+- 测试
+```
+type User struct{
+	ID int
+	Name string
+}
 
-	func main() {
-		s := NewList(Compare[int])
-		s.Add(1)
-		s.Add(2)
-		s.Add(3)
-		s.Add(4)
-		println(s.Contains(1))
-		println(s.Contains(10))
-		println(s.Find(func(item int) bool { return item%2 == 0 }).Count())
+func Compare[T constraints.Integer](x, y T) T {
+	return x - y
+}
 
-		users:=NewList(func(x,y User)int{
-			return x.ID-y.ID
-		})
+func main() {
+	s := NewList(Compare[int])
+	s.Add(1)
+	s.Add(2)
+	s.Add(3)
+	s.Add(4)
+	println(s.Contains(1))
+	println(s.Contains(10))
+	println(s.Find(func(item int) bool { return item%2 == 0 }).Count())
 
-		users.Add(User{ID:1,Name:"张三"})
-		println(users.Contains(User{ID:1,Name:"张三"}))
-	}
+	users:=NewList(func(x,y User)int{
+		return x.ID-y.ID
+	})
 
-	// outputs
-	// true
-	// false
-	// 2
-	// true
-	```
-> 吐槽
-	- 我们想扩展上面的`List`,比如我们增加如下将`List`转换为`map`的方法
-	```Go
-	func (list *List[T]) AsMap[TKey comprable](k func(item intT)TKey) map[TKey,T] {
-		// syntax error: method must have no type parameters
-		return nil
-	}
-	```
-	- 按照`java`或`c#`等其他语言的经验,我们很容易写出如上代码定义,可是go语言目前并不支持泛型方法,将来会支持泛型方法.上面的代码直接编译失败.
-	- 那么目前我们该,怎么办? 
-	- 我们想到既然不支持泛型方法,但是他支持泛型函数,所以我们可以改成这样
-	```Go
-	func AsMap[T any,TKey comprable](list List[T],k func(item T)TKey) map[TKey] {
-		// syntax error: method must have no type parameters
-		return nil
-	}
-	```
-	- 这样就行了,使用时直接`m:=AsMap(list,func(item User)int{return user.ID})`
-    
-	```Go 
-	type ListComp [T any,TKey comparable] List[T]
+	users.Add(User{ID:1,Name:"张三"})
+	println(users.Contains(User{ID:1,Name:"张三"}))
+}
 
-	func (list *ListComp[T,TKey]) AsMap(k func(item T)TKey) map[TKey] {
-		// 
-	}
+// outputs
+// true
+// false
+// 2
+// true
+```
 
-	func main(){
-		list:=NewList(Compare[int]);
-		listK:=(*ListComp[int,string])(list)
-		listK.AsMap(func(item int)string{return fmt.Sprintf("%d",item)})
-	}
-	```
-	- 虽然通过定义一个中介类型,在中介类型上添加新的类型参数,可以达到扩展泛型方法的目的,但是使用上要涉及到来会的强制类型转换,还是等后续版本支持泛型方法吧.
+> ## 吐槽
+- 我们想扩展上面的`List`,比如我们增加如下将`List`转换为`map`的方法
+```Go
+func (list *List[T]) AsMap[TKey comprable](k func(item intT)TKey) map[TKey,T] {
+// syntax error: method must have no type parameters
+return nil
+}
+```
+- 按照`java`或`c#`等其他语言的经验,我们很容易写出如上代码定义,可是go语言目前并不支持泛型方法,将来会支持泛型方法.上面的代码直接编译失败.
+- 那么目前我们该,怎么办? 
+- 我们想到既然不支持泛型方法,但是他支持泛型函数,所以我们可以改成这样
+```Go
+func AsMap[T any,TKey comprable](list List[T],k func(item T)TKey) map[TKey] {
+	// syntax error: method must have no type parameters
+	return nil
+}
+```
+- 这样就行了,使用时直接`m:=AsMap(list,func(item User)int{return user.ID})`
+  
+```Go 
+type ListComp [T any,TKey comparable] List[T]
+
+func (list *ListComp[T,TKey]) AsMap(k func(item T)TKey) map[TKey] {
+// 
+}
+
+func main(){
+	list:=NewList(Compare[int]);
+	listK:=(*ListComp[int,string])(list)
+	listK.AsMap(func(item int)string{return fmt.Sprintf("%d",item)})
+}
+```
+- 虽然通过定义一个中介类型,在中介类型上添加新的类型参数,可以达到扩展泛型方法的目的,但是使用上要涉及到来会的强制类型转换,还是等后续版本支持泛型方法吧.
