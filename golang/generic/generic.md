@@ -120,7 +120,7 @@ func main(){
      ```
     - 这里我们从Go语言规范上摘抄了泛型的语法定义,从中可以直观的看出泛型定义就是一对中括号加上泛型形参列表及一个可选的用于换行的逗号.
     - 我们写一些简单的类型定义
-    ```
+    ```go
         // generic function
         func Add[T int|int32](x,y) T{
             return x+y
@@ -159,7 +159,7 @@ func main(){
     ```
     TypeParamList   = TypeParamDecl { "," TypeParamDecl } .
     ```
-    ```
+    ```go
     func Cast[T,V any](items []T,conv func(T)V) []V{
         targets:=[]V{}
         
@@ -203,7 +203,7 @@ func main(){
    ```
    - 类型约束是定义相应类型形参的支持类型范围.如 `T int|int32` 就约束`T`的类型只能是`int`或`int32`,一个完整的类型约束定义应该是`interface{E}`,`E`是类型的名称.比如`interface{int|int32|string}`,不过`interface{}`一般情况下都可以省略.
    - 下面我们看一些例子
-   ```
+   ```go
       type interface Stringer {
           string String()
       }
@@ -235,7 +235,7 @@ func main(){
      type PtrSlice[T interface{*int|*float32}] []T 
    ```
    - ~符号用于表示只要是兼容的底层基础类型,只能用于基础类型
-   ```
+   ```go
       type Int int
       type Float32 float32
       type Slice[T ~int|float32] []T
@@ -280,7 +280,7 @@ func main(){
 > # 内置类型
 - comparable & any
 	- 在1.18中go语言引入了两个内置接口类型(严格来说只有`comparable`,`any`是`interface{}`的别名),`any`表示可以接收任意类型.`comparable`表示可比较的,即该类型必须支持`==`与`!=`操作,而且`comparable`只能用于约束泛型形参参数,不能用于其他地方.
-	```
+	```go
 	func SliceToMap[S any,K comparable,V any](s []T,k func(S)K,v func(S)V)map[K]V{
 		m:=map[K]T{}
 		for _,item:=range s{
@@ -294,7 +294,7 @@ func main(){
 
 - constraints包 (golang.org/x/exp/constraints)
    - constraints包提供了一些定义好的接口(挺少的),在开发过程中我们可以直接进行使用.
-   ```
+   ```go
 	type Complex interface {
 		~complex64 | ~complex128
 	}
@@ -320,9 +320,9 @@ func main(){
 	}
    ```
 
-- 实战
+> 练习
 	- 我们来写用泛型实现一个`List`(类似于`C#`中的`List<T>`)来练习一下泛型得使用及一些小技巧.
-	```
+	```go
 	// type definition
 	
 	type List[T any] interface {
@@ -343,14 +343,14 @@ func main(){
 	}
 	```
 	- 我们先定义一下这个`List`的`interface`,下面我们来定义一下它的实现
-	```
+	```go
 	type List[T any] struct{
 		items []T
 	}
 	```
 	- 这个`struct`的结构非常简单,它内部引用一个`slice`来存储具体的数据
 	- NewList 函数,很简单,没什么好说的
-	```
+	```go
 	func NewList[T any]() *List[T] {
 		return &List[T]{
 			items: make([]T, 0),
@@ -358,7 +358,7 @@ func main(){
 	}
 	```
 	-  Get|Set方法
-	```
+	```go
 	func (list *List[T]) Get(index int) T {
 		if index < 0 || index >= list.Count() {
 			panic("index out of slice range")
@@ -377,7 +377,7 @@ func main(){
 
 	```
 	-  Empty|Count|Slice方法
-	```
+	```go
 	func (list *List[T]) Empty() bool {
 		return len(list.items) == 0
 	}
@@ -391,7 +391,7 @@ func main(){
 	}
 	```
 	- IndexOf | Contains 方法
-	```
+	```go
 	func (list *List[T]) IndexOf(item T) int {
 		for index, it := range list.items {
 			if it==item {  // error invalid operation: it == item (type parameter T is not comparable with ==)
@@ -411,7 +411,7 @@ func main(){
   		- 修改`IndexOf`方法参数,像`First`方法那样传递一个`func`,因为调用的时候泛型类型已经实例化好了,调用方可以进行比较,但每一次调用都需要额外传递参数
   		- `NewList`增加参数传递一个`func`或`interface`,存到`List`内部,我比较倾向于这种
   	- 我们修改一下`List`的定义及重新实现一下`NewList`方法
-  	```
+  	```go
   	type List[T any] struct {
 		items []T
 		comp  func(x, y T) int
@@ -435,7 +435,7 @@ func main(){
   	}
   	```
 	- Find|First|FirstOrDefault 方法
-	```
+	```go
 	func (list *List[T]) Find(filter func(T) bool) *List[T] {
 		n := NewList[T](list.comp)
 		for _, item := range list.items {
@@ -465,7 +465,7 @@ func main(){
 
 	```
 	- Add|Insert|Remove|RemoveAll方法
-	```
+	```go
 	func (list *List[T]) Add(item T) {
 		list.items = append(list.items, item)
 	}
@@ -529,7 +529,7 @@ func main(){
 
 	```
 	- 测试
-	```
+	```go
 	type User struct{
 		ID int
 		Name string
@@ -563,7 +563,7 @@ func main(){
 	// 2
 	// true
 	```
-- 吐槽
+> 吐槽
 	- 我们想扩展上面的`List`,比如我们增加如下将`List`转换为`map`的方法
 	```Go
 	func (list *List[T]) AsMap[TKey comprable](k func(item intT)TKey) map[TKey,T] {
